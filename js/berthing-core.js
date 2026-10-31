@@ -26,7 +26,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '3.6.4';
+  const VERSION = '3.6.5';
   /** Semantic version of the derived features / rule-risk definitions. Risk models trained
    *  with a different FEATURE_SCHEMA must be retrained (their inputs mean something else). */
   const FEATURE_SCHEMA = '3.5';

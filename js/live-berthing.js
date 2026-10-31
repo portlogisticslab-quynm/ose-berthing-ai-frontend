@@ -85,7 +85,7 @@ const alertAt = (t) => { let a = LIVE.series[0]; for (const s of LIVE.series) { 
  * replay is PLAYING and sent in batches (≤ 100 frames, ~1 request/s) through the Berthing AI backend relay, which
  * holds the Port-SHM gateway key. The contact outcome is sent with the last batch. Failed batches are retried with
  * back-off, so nothing is skipped at high replay speeds. Scrubbing/previewing never sends anything. */
-const SHM = { enabled: false, token: '', session: '', eventId: '', queue: [], sentUpTo: -1, contactQueued: false,
+const SHM = { enabled: false, session: '', eventId: '', queue: [], sentUpTo: -1, contactQueued: false,
   busy: false, sent: 0, expected: 0, fail: 0, nextTry: 0, lastStart: 0, lastLagMs: null, lastResult: '', note: '' };
 const SHM_BATCH = 100, SHM_MIN_GAP_MS = 600;   // ≤ 100 requests/min → below the relay (300/min) and Port-SHM gateway (120/min) limits
 let shmTimer = null;
@@ -148,7 +148,7 @@ async function shmFlush() {
   SHM.busy = true; SHM.lastStart = Date.now();
   try {
     const r = await fetch(base + '/api/port-shm/forecast/batch', { method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Relay-Token': SHM.token }, body: JSON.stringify({ frames, ...(contact ? { contact } : {}) }) });
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ frames, ...(contact ? { contact } : {}) }) });
     let j = {}; try { j = await r.json(); } catch { /* non-JSON */ }
     if (r.ok) {
       SHM.queue.splice(0, batch.length); SHM.sent += frames.length + (contact ? 1 : 0); SHM.fail = 0; SHM.nextTry = 0; SHM.note = '';
@@ -158,9 +158,10 @@ async function shmFlush() {
         SHM.lastResult = `kết quả chạm bến đã gửi (${OUT[j.contact.outcome] || j.contact.outcome})`;
       }
       shmStatus(shmSummary());
-    } else if (r.status === 401 || r.status === 503) {
+    } else if (r.status === 401 || r.status === 403 || r.status === 503) {
       SHM.enabled = false; const cb = $('liveShmEnabled'); if (cb) cb.checked = false;
-      shmStatus(`Port-SHM: ${r.status === 401 ? 'Relay Token sai' : 'relay chưa bật trên server'} (HTTP ${r.status}) – đã tắt gửi.`, true);
+      const why = r.status === 503 ? 'relay chưa bật trên máy chủ' : r.status === 401 ? 'máy chủ còn yêu cầu Relay Token (cần đặt PORT_SHM_RELAY_OPEN=1)' : 'tên miền trang này chưa có trong ALLOWED_ORIGINS của máy chủ';
+      shmStatus(`Port-SHM: ${why} (HTTP ${r.status}) – đã tắt gửi.`, true);
     } else if (r.status === 429) {
       // rate limit: wait exactly what the server asks (Retry-After), no exponential back-off, not an error
       const ra = Number(r.headers.get('Retry-After')) || 2;
@@ -562,10 +563,8 @@ Object.assign(ACTIONS, {
 });
 $('liveZipInput').addEventListener('change', liveLoadZip);
 $('liveShmEnabled').addEventListener('change', (e) => {
-  if (!e.target.checked) { SHM.enabled = false; SHM.token = ''; shmStatus(`Đã tắt gửi Port-SHM${SHM.queue.length ? ` (bỏ ${SHM.queue.length} bản tin chưa gửi)` : ''}.`); SHM.queue = []; return; }
-  const entered = window.prompt('Nhập Relay Token thử nghiệm (KHÔNG phải khoá Gateway của Port-SHM). Token chỉ giữ trong bộ nhớ trang.');
-  if (!entered || !entered.trim()) { e.target.checked = false; shmStatus('Chưa nhập Relay Token.'); return; }
-  SHM.token = entered.trim(); SHM.enabled = true; SHM.eventId = ''; SHM.sent = 0; SHM.fail = 0; SHM.queue = []; SHM.nextTry = 0;
+  if (!e.target.checked) { SHM.enabled = false; shmStatus(`Đã tắt gửi Port-SHM${SHM.queue.length ? ` (bỏ ${SHM.queue.length} bản tin chưa gửi)` : ''}.`); SHM.queue = []; return; }
+  SHM.enabled = true; SHM.eventId = ''; SHM.sent = 0; SHM.fail = 0; SHM.queue = []; SHM.nextTry = 0;
   shmStatus('Đã bật: bản tin chỉ gửi khi nhấn ▶ Phát (mỗi 5 s thời gian sự kiện, gửi theo lô).');
 });
 $('liveEvent').addEventListener('change', liveSelect);
